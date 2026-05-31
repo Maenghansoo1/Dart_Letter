@@ -1,3 +1,7 @@
+# Environment variables (API keys — NEVER commit)
+.env
+backend/.env
+
 # Miscellaneous
 *.class
 *.log
@@ -43,13 +47,3 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-
-# 민감 정보 (API 키, 시크릿)
-.env
-.env.*
-lib/core/constants/secrets.dart
-google-services.json
-GoogleService-Info.plist
-android/key.properties
-*.keystore
-*.jks

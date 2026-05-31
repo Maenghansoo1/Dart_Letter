@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "stock_wiki",
+			"path": "../../Stock_wiki/stock_wiki"
+		},
+		{
+			"name": "docs",
+			"path": "../../../Downloads/dartletter_v3/dartletter/docs"
+		}
+	],
+	"settings": {}
+}

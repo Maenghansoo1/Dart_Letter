@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>다트레터 — 중간 발표</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --p:#534AB7;--p2:#7B74D4;--p3:#EEEDFE;
+  --bg:#0A0A0F;--bg2:#12121A;--bg3:#1A1A26;
+  --t:#FFFFFF;--t2:#A0A0B8;--t3:#5A5A7A;
+  --done:#1D9E75;--active:#F5A623;--danger:#E24B4A;
+}
+body{background:var(--bg);color:var(--t);font-family:'Noto Sans KR',sans-serif;min-height:100vh}
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 40px;
+  background:rgba(10,10,15,0.9);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.nav-logo{font-weight:900;font-size:18px;color:var(--p2)}
+.nav-right{display:flex;align-items:center;gap:16px}
+.nav-back{font-size:13px;color:var(--t2);text-decoration:none;transition:color 0.2s}
+.nav-back:hover{color:var(--t)}
+.grid-bg{
+  position:fixed;inset:0;
+  background-image:linear-gradient(rgba(83,74,183,0.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(83,74,183,0.04) 1px,transparent 1px);
+  background-size:60px 60px;pointer-events:none;z-index:0;
+}
+.content{position:relative;z-index:1;padding:100px 40px 80px;max-width:1000px;margin:0 auto}
+.page-label{font-family:'Space Mono',monospace;font-size:11px;color:var(--t3);letter-spacing:3px;margin-bottom:16px}
+.page-title{font-size:clamp(28px,4vw,48px);font-weight:900;margin-bottom:8px}
+.page-title span{color:var(--p2)}
+.page-sub{font-size:14px;color:var(--t2);margin-bottom:48px;line-height:1.7}
+
+/* 슬라이드 */
+.slide-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.slide-counter{font-family:'Space Mono',monospace;font-size:12px;color:var(--t3)}
+.slide-btns{display:flex;gap:8px}
+.slide-btn{
+  background:var(--bg2);border:1px solid var(--bg3);border-radius:8px;
+  padding:8px 16px;font-size:13px;color:var(--t2);cursor:pointer;
+  transition:all 0.2s;font-family:'Noto Sans KR',sans-serif;
+}
+.slide-btn:hover{border-color:var(--p);color:var(--t)}
+.slide-btn:disabled{opacity:0.3;cursor:not-allowed}
+
+.slide-wrap{
+  background:var(--bg2);border:1px solid var(--bg3);border-radius:16px;
+  overflow:hidden;margin-bottom:16px;
+  aspect-ratio:16/9;position:relative;
+}
+.slide{
+  position:absolute;inset:0;padding:60px 72px;
+  display:none;flex-direction:column;
+  opacity:0;transition:opacity 0.3s;
+}
+.slide.active{display:flex;opacity:1}
+.slide-num{
+  position:absolute;bottom:20px;right:28px;
+  font-family:'Space Mono',monospace;font-size:11px;color:var(--t3);
+}
+
+/* 슬라이드 내부 스타일 */
+.s-eyebrow{font-family:'Space Mono',monospace;font-size:11px;color:var(--t3);letter-spacing:2px;margin-bottom:12px}
+.s-h1{font-size:clamp(28px,4vw,52px);font-weight:900;color:var(--p2);margin-bottom:8px;line-height:1.1}
+.s-h2{
+  font-size:clamp(18px,2.5vw,28px);font-weight:700;color:var(--t);
+  border-left:4px solid var(--p);padding-left:16px;margin-bottom:28px;line-height:1.3;
+}
+.s-sub{font-size:clamp(12px,1.5vw,16px);color:var(--t2);line-height:1.7;margin-bottom:16px}
+.s-strong{color:var(--t);font-weight:600}
+.s-quote{
+  background:var(--bg3);border-left:3px solid var(--p);
+  padding:16px 20px;border-radius:0 8px 8px 0;margin:12px 0;
+}
+.s-quote p{font-size:clamp(11px,1.3vw,14px);color:var(--t);line-height:1.8}
+.s-table{width:100%;border-collapse:collapse;font-size:clamp(10px,1.2vw,13px);margin-top:8px}
+.s-table th{background:var(--p);color:#fff;padding:8px 12px;text-align:left}
+.s-table td{padding:8px 12px;border-bottom:1px solid var(--bg3);color:var(--t2)}
+.s-table tr:last-child td{border-bottom:none}
+.s-list{list-style:none;display:flex;flex-direction:column;gap:8px}
+.s-list li{
+  display:flex;align-items:flex-start;gap:10px;
+  font-size:clamp(11px,1.3vw,14px);color:var(--t2);line-height:1.6;
+}
+.s-list li::before{content:'—';color:var(--p2);flex-shrink:0}
+.s-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;
+}
+.s-badge.done{background:rgba(29,158,117,0.15);color:var(--done)}
+.s-badge.active{background:rgba(245,166,35,0.15);color:var(--active)}
+.s-badge.todo{background:rgba(83,74,183,0.15);color:var(--p2)}
+.s-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.s-card{background:var(--bg3);border-radius:8px;padding:14px 16px}
+.s-card-title{font-size:12px;font-weight:700;color:var(--t);margin-bottom:4px}
+.s-card-desc{font-size:11px;color:var(--t2);line-height:1.6}
+.s-progress{
+  background:var(--bg3);border-radius:100px;height:6px;margin-top:8px;overflow:hidden;
+}
+.s-progress-bar{height:100%;border-radius:100px;background:linear-gradient(90deg,var(--done),var(--active))}
+.s-arch{
+  background:var(--bg3);border-radius:8px;padding:16px 20px;
+  font-family:'Space Mono',monospace;font-size:clamp(9px,1vw,12px);
+  color:var(--t2);line-height:1.8;white-space:pre;overflow:hidden;
+}
+
+/* 썸네일 */
+.thumbnails{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;margin-bottom:48px}
+.thumb{
+  background:var(--bg2);border:1px solid var(--bg3);border-radius:8px;
+  padding:10px;cursor:pointer;transition:all 0.2s;text-align:center;
+}
+.thumb:hover,.thumb.active{border-color:var(--p)}
+.thumb-num{font-family:'Space Mono',monospace;font-size:10px;color:var(--t3);margin-bottom:4px}
+.thumb-title{font-size:10px;color:var(--t2);line-height:1.4}
+
+/* 다운로드 안내 */
+.download-box{
+  background:var(--bg2);border:1px solid var(--bg3);border-radius:12px;
+  padding:24px;margin-bottom:48px;
+}
+.download-title{font-size:15px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.download-desc{font-size:13px;color:var(--t2);line-height:1.7;margin-bottom:16px}
+.code-block{
+  background:var(--bg3);border-radius:8px;padding:16px 20px;
+  font-family:'Space Mono',monospace;font-size:12px;color:var(--p2);
+  line-height:1.8;overflow-x:auto;
+}
+
+.back-btn{
+  position:fixed;bottom:32px;right:32px;z-index:100;
+  background:var(--p);color:white;border:none;border-radius:50px;
+  padding:12px 24px;font-size:13px;font-weight:600;cursor:pointer;
+  text-decoration:none;display:flex;align-items:center;gap:8px;
+  transition:all 0.2s;font-family:'Noto Sans KR',sans-serif;
+}
+.back-btn:hover{background:var(--p2);transform:translateY(-2px)}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<nav>
+  <div class="nav-logo">다트레터</div>
+  <div class="nav-right">
+    <a href="presentation/interim.md" download class="nav-back">⬇ .md 다운로드</a>
+    <a href="index.html" class="nav-back">← 목록</a>
+  </div>
+</nav>
+
+<div class="content">
+  <div class="page-label">04 — PRESENTATION</div>
+  <h1 class="page-title">중간 <span>발표</span></h1>
+  <p class="page-sub">세션 4 · 2025년 5월 · DART 공시 AI 분석 앱 다트레터</p>
+
+  <!-- 슬라이드 뷰어 -->
+  <div class="slide-nav">
+    <div class="slide-counter"><span id="cur">1</span> / <span id="total">9</span></div>
+    <div class="slide-btns">
+      <button class="slide-btn" id="prevBtn" onclick="prevSlide()" disabled>← 이전</button>
+      <button class="slide-btn" id="nextBtn" onclick="nextSlide()">다음 →</button>
+    </div>
+  </div>
+
+  <div class="slide-wrap">
+
+    <!-- 1. 표지 -->
+    <div class="slide active" id="slide-1">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
+        <div class="s-eyebrow">기말 프로젝트 · 중간 발표 · 2025</div>
+        <div class="s-h1">다트레터<br>DartLetter</div>
+        <div class="s-sub" style="font-size:clamp(13px,1.6vw,18px);margin-top:8px">DART 공시를 AI가 쉽게 풀어주는 기업분석 앱</div>
+        <div style="margin-top:32px;display:flex;gap:12px;flex-wrap:wrap">
+          <span class="s-badge done">Flutter</span>
+          <span class="s-badge done">FastAPI</span>
+          <span class="s-badge done">Supabase</span>
+          <span class="s-badge active">Gemini AI</span>
+        </div>
+      </div>
+      <div class="slide-num">1 / 9</div>
+    </div>
+
+    <!-- 2. 문제 정의 -->
+    <div class="slide" id="slide-2">
+      <div class="s-h2">1. 문제 정의</div>
+      <div class="s-sub"><span class="s-strong">국내 개인 투자자 1,400만 명</span> — 하지만 공시를 이해하는 사람은 극소수</div>
+      <table class="s-table">
+        <tr><th>문제</th><th>내용</th></tr>
+        <tr><td>📄 난해한 언어</td><td>법률·회계 전문용어, 평균 32페이지</td></tr>
+        <tr><td>⏰ 정보 지연</td><td>알림 없음, 평균 2.3시간 지연</td></tr>
+        <tr><td>🔍 분산된 정보</td><td>DART + 포털 + 증권앱 3~5개 오가야 함</td></tr>
+      </table>
+      <div class="s-quote" style="margin-top:16px">
+        <p><strong>한 줄 가치 제안:</strong> AI가 공시를 쉬운 말로 풀어주어 누구나 기업을 분석할 수 있게 한다</p>
+      </div>
+      <div class="slide-num">2 / 9</div>
+    </div>
+
+    <!-- 3. 사용자 시나리오 -->
+    <div class="slide" id="slide-3">
+      <div class="s-h2">2. 사용자 시나리오</div>
+      <div class="s-quote">
+        <p>직장인 김수현(32세)이 퇴근 후 관심 종목 삼성전자의<br>새 공시 알림을 받고 앱을 열면,<br>AI가 <strong>"반도체 업황 회복으로 영업이익이 38% 증가, HBM 수요 증가가 주요 원인"</strong> 이라고 쉽게 풀어준다.</p>
+      </div>
+      <div style="margin-top:20px">
+        <ul class="s-list">
+          <li>탐색에서 종목 검색 → 즐겨찾기 등록</li>
+          <li>공시 등록 시 <span class="s-strong">푸시 알림</span> 수신</li>
+          <li>AI 쉬운 설명 + <span class="s-strong">핵심 요약 3줄</span> 확인</li>
+          <li>관련 뉴스 및 주주 커뮤니티 확인</li>
+        </ul>
+      </div>
+      <div class="slide-num">3 / 9</div>
+    </div>
+
+    <!-- 4. 기술 스택 -->
+    <div class="slide" id="slide-4">
+      <div class="s-h2">3. 기술 스택</div>
+      <table class="s-table">
+        <tr><th>영역</th><th>기술</th><th>이유</th></tr>
+        <tr><td>프론트엔드</td><td>Flutter</td><td>iOS/Android 동시 개발</td></tr>
+        <tr><td>상태관리</td><td>Riverpod</td><td>Flutter 표준, 비동기 처리</td></tr>
+        <tr><td>백엔드</td><td>Python FastAPI</td><td>API 파싱 라이브러리 풍부</td></tr>
+        <tr><td>데이터베이스</td><td>Supabase</td><td>무료, 인증 내장, Realtime</td></tr>
+        <tr><td>AI 요약</td><td>Gemini API</td><td>무료 일 1,500건</td></tr>
+        <tr><td>공시</td><td>DART Open API</td><td>금감원 공식, 무료</td></tr>
+      </table>
+      <div class="slide-num">4 / 9</div>
+    </div>
+
+    <!-- 5. 아키텍처 -->
+    <div class="slide" id="slide-5">
+      <div class="s-h2">4. 아키텍처 다이어그램</div>
+      <div class="s-arch">Flutter 앱 (iOS / Android)
+  홈 · 탐색 · 뉴스 · 커뮤니티 · 마이
+       │ HTTPS
+FastAPI 백엔드
+  companies · disclosures · news · categories
+   │          │          │          │
+DART API  Naver News  Gemini AI  Supabase
+공시·재무   기업뉴스    AI 요약   PostgreSQL</div>
+      <div class="s-sub" style="margin-top:12px;font-size:11px">
+        모든 외부 API 결과는 Supabase에 캐싱 · DART 공시 → Gemini AI 분석 → Flutter 표시
+      </div>
+      <div class="slide-num">5 / 9</div>
+    </div>
+
+    <!-- 6. 진행 상황 -->
+    <div class="slide" id="slide-6">
+      <div class="s-h2">5. 진행 상황</div>
+      <ul class="s-list" style="margin-bottom:16px">
+        <li><span class="s-badge done">✅ 완료</span> &nbsp;Flutter 구조, Supabase DB 스키마 (10개 테이블 + RLS)</li>
+        <li><span class="s-badge done">✅ 완료</span> &nbsp;FastAPI 백엔드, DART API 공시·재무 연동</li>
+        <li><span class="s-badge done">✅ 완료</span> &nbsp;HTML 전처리, 캐시 레이어, Rate Limiter</li>
+        <li><span class="s-badge active">🚧 진행</span> &nbsp;Gemini AI 공시 요약 (쉬운 설명 + 3줄 요약)</li>
+        <li><span class="s-badge todo">⏳ 예정</span> &nbsp;네이버 뉴스, 카테고리 분류, Flutter UI 전체</li>
+      </ul>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1">
+          <div class="s-progress"><div class="s-progress-bar" style="width:43%"></div></div>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:18px;font-weight:700;color:var(--p2)">43%</div>
+      </div>
+      <div style="font-size:11px;color:var(--t3);margin-top:6px">세션 3/7 완료 · 세션 4 진행 중</div>
+      <div class="slide-num">6 / 9</div>
+    </div>
+
+    <!-- 7. 데모 -->
+    <div class="slide" id="slide-7">
+      <div class="s-h2">6. 데모 시나리오</div>
+      <div class="s-grid">
+        <div class="s-card">
+          <div class="s-card-title">① DART API 연동 확인</div>
+          <div class="s-card-desc">GET /companies — 기업 목록<br>GET /disclosures/005930 — 삼성전자 공시</div>
+        </div>
+        <div class="s-card">
+          <div class="s-card-title">② AI 공시 요약 (진행 중)</div>
+          <div class="s-card-desc">공시 원문 → Gemini → 쉬운 설명 + 3줄 요약 반환</div>
+        </div>
+        <div class="s-card">
+          <div class="s-card-title">③ Supabase 캐싱 확인</div>
+          <div class="s-card-desc">첫 요청: DART API 호출<br>재요청: 캐시 반환 (속도 비교)</div>
+        </div>
+        <div class="s-card">
+          <div class="s-card-title">④ Swagger UI 시연</div>
+          <div class="s-card-desc">localhost:8000/docs<br>FastAPI 자동 API 문서</div>
+        </div>
+      </div>
+      <div class="slide-num">7 / 9</div>
+    </div>
+
+    <!-- 8. 남은 일정 -->
+    <div class="slide" id="slide-8">
+      <div class="s-h2">7. 남은 일정</div>
+      <table class="s-table">
+        <tr><th>세션</th><th>기간</th><th>목표</th></tr>
+        <tr><td><span class="s-badge active">S4 현재</span></td><td>5/18 ~ 5/26</td><td>Gemini AI + 네이버 뉴스 + 카테고리</td></tr>
+        <tr><td>S5</td><td>5/27 ~ 6/2</td><td>Flutter UI 전체 구현 + 테스트</td></tr>
+        <tr><td>S6</td><td>6/3 ~ 6/9</td><td>FCM 알림 + 마이페이지 + 배포</td></tr>
+        <tr><td><strong>S7 최종</strong></td><td>6/10 ~ 6/14</td><td>🏆 최종 발표</td></tr>
+      </table>
+      <div class="s-sub" style="margin-top:16px">
+        리스크: DART 일 10,000건 한도 → 캐싱 대응 · Supabase 무료 플랜 일시정지 → 주기적 ping
+      </div>
+      <div class="slide-num">8 / 9</div>
+    </div>
+
+    <!-- 9. 마무리 -->
+    <div class="slide" id="slide-9">
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
+        <div style="font-size:48px;margin-bottom:24px">🙏</div>
+        <div class="s-h1" style="text-align:center">감사합니다</div>
+        <div class="s-sub" style="margin-top:16px;text-align:center">질문 받겠습니다</div>
+        <div style="margin-top:32px;background:var(--bg3);border-radius:10px;padding:16px 24px;font-family:'Space Mono',monospace;font-size:12px;color:var(--p2)">
+          GitHub Pages 발표 자료<br>
+          https://[유저명].github.io/dartletter-pages
+        </div>
+      </div>
+      <div class="slide-num">9 / 9</div>
+    </div>
+
+  </div>
+
+  <!-- 썸네일 -->
+  <div class="thumbnails" id="thumbs"></div>
+
+  <!-- Marp 다운로드 안내 -->
+  <div class="download-box">
+    <div class="download-title">📄 Marp 슬라이드 파일 사용법</div>
+    <div class="download-desc">
+      <code>docs/presentation/interim.md</code> 파일을 VS Code + Marp 확장으로 열면 실제 발표용 슬라이드로 변환할 수 있어요.<br>
+      PDF나 PPTX로도 내보내기 가능해요.
+    </div>
+    <div class="code-block"># 1. VS Code에서 Marp for VS Code 확장 설치
+# 2. interim.md 파일 열기
+# 3. 우측 상단 미리보기 버튼 클릭
+# 4. Export → PDF 또는 PPTX 선택
+
+# CLI로 변환하는 방법
+npm install -g @marp-team/marp-cli
+marp docs/presentation/interim.md --pdf
+marp docs/presentation/interim.md --pptx</div>
+  </div>
+
+</div>
+
+<a href="index.html" class="back-btn">← 목록으로</a>
+
+<script>
+let cur = 1;
+const total = 9;
+
+const titles = [
+  '표지','문제 정의','사용자 시나리오','기술 스택',
+  '아키텍처','진행 상황','데모','남은 일정','마무리'
+];
+
+// 썸네일 생성
+const thumbWrap = document.getElementById('thumbs');
+titles.forEach((t,i) => {
+  const d = document.createElement('div');
+  d.className = 'thumb' + (i===0?' active':'');
+  d.innerHTML = `<div class="thumb-num">${i+1}</div><div class="thumb-title">${t}</div>`;
+  d.onclick = () => goSlide(i+1);
+  thumbWrap.appendChild(d);
+});
+
+function goSlide(n) {
+  document.getElementById('slide-'+cur).classList.remove('active');
+  document.querySelectorAll('.thumb')[cur-1].classList.remove('active');
+  cur = n;
+  document.getElementById('slide-'+cur).classList.add('active');
+  document.querySelectorAll('.thumb')[cur-1].classList.add('active');
+  document.getElementById('cur').textContent = cur;
+  document.getElementById('prevBtn').disabled = cur === 1;
+  document.getElementById('nextBtn').disabled = cur === total;
+}
+
+function prevSlide() { if(cur > 1) goSlide(cur-1); }
+function nextSlide() { if(cur < total) goSlide(cur+1); }
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'ArrowRight' || e.key === 'ArrowDown') nextSlide();
+  if(e.key === 'ArrowLeft' || e.key === 'ArrowUp') prevSlide();
+});
+</script>
+</body>
+</html>

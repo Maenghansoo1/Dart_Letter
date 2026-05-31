@@ -1,24 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'core/theme.dart';
+import 'router.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
+  runApp(const ProviderScope(child: DartLetterApp()));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class DartLetterApp extends StatelessWidget {
+  const DartLetterApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Stock Wiki',
+    return MaterialApp.router(
+      title: '다트레터',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3182F6)),
-        useMaterial3: true,
-      ),
-      home: const Scaffold(
-        body: Center(child: Text('Stock Wiki')),
-      ),
+      theme: AppTheme.light,
+      routerConfig: router,
     );
   }
 }
