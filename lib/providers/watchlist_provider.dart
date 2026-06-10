@@ -1,34 +1,61 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/company.dart';
-import '../services/company_service.dart';
+import '../models/watchlist_group.dart';
 
-class WatchlistNotifier extends Notifier<List<String>> {
+class WatchlistGroupNotifier extends Notifier<List<WatchlistGroup>> {
   @override
-  List<String> build() => [];
+  List<WatchlistGroup> build() => [];
 
-  void add(String corpCode) {
-    if (!state.contains(corpCode)) state = [...state, corpCode];
+  void addGroup(String name) {
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    state = [...state, WatchlistGroup(id: id, name: name)];
   }
 
-  void remove(String corpCode) {
-    state = state.where((c) => c != corpCode).toList();
+  void removeGroup(String id) {
+    state = state.where((g) => g.id != id).toList();
   }
 
-  bool contains(String corpCode) => state.contains(corpCode);
-
-  void toggle(String corpCode) {
-    contains(corpCode) ? remove(corpCode) : add(corpCode);
+  void renameGroup(String id, String newName) {
+    state = [
+      for (final g in state) g.id == id ? g.copyWith(name: newName) : g,
+    ];
   }
+
+  void addCompany(String groupId, Company company) {
+    state = [
+      for (final g in state)
+        g.id == groupId && !g.contains(company.corpCode)
+            ? g.copyWith(companies: [...g.companies, company])
+            : g,
+    ];
+  }
+
+  void removeCompany(String groupId, String corpCode) {
+    state = [
+      for (final g in state)
+        g.id == groupId
+            ? g.copyWith(
+                companies: g.companies
+                    .where((c) => c.corpCode != corpCode)
+                    .toList())
+            : g,
+    ];
+  }
+
+  bool isInAnyGroup(String corpCode) =>
+      state.any((g) => g.contains(corpCode));
+
+  List<WatchlistGroup> groupsContaining(String corpCode) =>
+      state.where((g) => g.contains(corpCode)).toList();
 }
 
-/// 관심 종목 코드 목록
-final watchlistProvider =
-    NotifierProvider<WatchlistNotifier, List<String>>(WatchlistNotifier.new);
+final watchlistGroupsProvider =
+    NotifierProvider<WatchlistGroupNotifier, List<WatchlistGroup>>(
+  WatchlistGroupNotifier.new,
+);
 
-/// 관심 종목 Company 객체 목록
-final watchlistCompaniesProvider = FutureProvider<List<Company>>((ref) async {
-  final codes = ref.watch(watchlistProvider);
-  if (codes.isEmpty) return [];
-  final service = ref.watch(companyServiceProvider);
-  return Future.wait(codes.map(service.getDetail));
+// 기존 코드 호환용 — 전체 즐겨찾기 corp_code 목록
+final watchlistProvider = Provider<List<String>>((ref) {
+  final groups = ref.watch(watchlistGroupsProvider);
+  return groups.expand((g) => g.companies.map((c) => c.corpCode)).toSet().toList();
 });
