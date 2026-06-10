@@ -2,8 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/news_item.dart';
 import '../services/news_service.dart';
 
-final latestNewsProvider = FutureProvider<List<NewsItem>>((ref) {
-  return ref.watch(newsServiceProvider).getLatest();
+final newsCategoriesProvider = FutureProvider<List<String>>((ref) {
+  return ref.watch(newsServiceProvider).getCategories();
+});
+
+final latestNewsProvider =
+    FutureProvider.family<List<NewsItem>, String>((ref, category) {
+  return ref.watch(newsServiceProvider).getLatest(category: category);
 });
 
 final companyNewsProvider =
