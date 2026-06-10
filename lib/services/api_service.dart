@@ -19,6 +19,14 @@ class ApiService {
   static final instance = ApiService._();
   late final Dio _dio;
 
+  void setAuthToken(String? token) {
+    if (token != null) {
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+    } else {
+      _dio.options.headers.remove('Authorization');
+    }
+  }
+
   Future<dynamic> get(String path, {Map<String, dynamic>? queryParameters}) async {
     final response = await _dio.get(path, queryParameters: queryParameters);
     return _unwrap(response.data);
@@ -26,6 +34,11 @@ class ApiService {
 
   Future<dynamic> post(String path, {dynamic data}) async {
     final response = await _dio.post(path, data: data);
+    return _unwrap(response.data);
+  }
+
+  Future<dynamic> patch(String path, {dynamic data}) async {
+    final response = await _dio.patch(path, data: data);
     return _unwrap(response.data);
   }
 

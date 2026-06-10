@@ -10,11 +10,12 @@ void main() async {
   runApp(const ProviderScope(child: DartLetterApp()));
 }
 
-class DartLetterApp extends StatelessWidget {
+class DartLetterApp extends ConsumerWidget {
   const DartLetterApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = createRouter(ref);
     return MaterialApp.router(
       title: '다트레터',
       debugShowCheckedModeBanner: false,

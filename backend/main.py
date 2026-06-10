@@ -7,7 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 import config  # 시작 시 환경변수 검증 (없으면 ValueError)
-from routers import categories, companies, disclosures, financials
+from routers import auth, categories, companies, community, disclosures, financials, news
 from utils.rate_limiter import limiter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -31,10 +31,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(companies.router)
 app.include_router(disclosures.router)
 app.include_router(financials.router)
 app.include_router(categories.router)
+app.include_router(news.router)
+app.include_router(community.router)
 
 
 @app.get("/health", tags=["상태"])
