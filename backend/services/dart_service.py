@@ -89,6 +89,136 @@ async def sync_listed_companies() -> int:
     return len(companies)
 
 
+async def sync_market_from_dart() -> int:
+    """DART 공시목록 API로 코스피·코스닥 corp_code를 수집해 market 필드 일괄 업데이트"""
+    from datetime import date, timedelta
+
+    end_de = date.today().strftime("%Y%m%d")
+    bgn_de = (date.today() - timedelta(days=90)).strftime("%Y%m%d")  # 최근 3개월
+
+    # 코스피·코스닥 병렬 수집
+    kospi_task = _collect_corp_codes_by_cls("Y", bgn_de, end_de)
+    kosdaq_task = _collect_corp_codes_by_cls("K", bgn_de, end_de)
+    kospi_codes, kosdaq_codes = await asyncio.gather(kospi_task, kosdaq_task)
+
+    if not kospi_codes and not kosdaq_codes:
+        return 0
+
+    db = get_supabase()
+    updated = 0
+    for market, codes in [("KOSPI", list(kospi_codes)), ("KOSDAQ", list(kosdaq_codes))]:
+        for i in range(0, len(codes), 200):
+            batch = codes[i : i + 200]
+            res = await asyncio.to_thread(
+                lambda m=market, b=batch: db.table("companies")
+                .update({"market": m})
+                .in_("corp_code", b)
+                .execute()
+            )
+            updated += len(res.data or [])
+
+    logger.info(f"market 동기화 완료: {updated}개 (KOSPI {len(kospi_codes)}, KOSDAQ {len(kosdaq_codes)})")
+    return updated
+
+
+async def _collect_corp_codes_by_cls(corp_cls: str, bgn_de: str, end_de: str) -> set[str]:
+    """DART 공시목록 전체 페이지를 순회하며 unique corp_code 수집"""
+    codes: set[str] = set()
+    page = 1
+    while True:
+        try:
+            data = await _dart_json(
+                "list.json",
+                {"bgn_de": bgn_de, "end_de": end_de, "corp_cls": corp_cls,
+                 "page_no": page, "page_count": 100},
+            )
+            if data.get("status") not in ("000", "013"):
+                break
+            items = data.get("list", [])
+            for item in items:
+                if code := item.get("corp_code"):
+                    codes.add(code)
+            total = int(data.get("total_count", 0))
+            if page * 100 >= total or not items:
+                break
+            page += 1
+        except Exception as e:
+            logger.error(f"DART corp_cls={corp_cls} 수집 실패 (page={page}): {e}")
+            break
+    logger.info(f"corp_cls={corp_cls} 수집 완료: {len(codes)}개 고유 기업")
+    return codes
+
+
+# ── 업종 코드 동기화 ──────────────────────────────────────────────────────────
+
+async def sync_industry_codes() -> int:
+    """industry가 null인 기업들의 업종코드를 DART에서 병렬 조회하여 업데이트"""
+    db = get_supabase()
+
+    # Supabase 기본 limit=1000 → 전체 페이지 순회
+    corp_codes: list[str] = []
+    offset = 0
+    page_size = 1000
+    while True:
+        result = await asyncio.to_thread(
+            lambda o=offset: db.table("companies")
+            .select("corp_code")
+            .is_("industry", "null")
+            .in_("market", ["KOSPI", "KOSDAQ"])
+            .range(o, o + page_size - 1)
+            .execute()
+        )
+        batch = [r["corp_code"] for r in (result.data or [])]
+        corp_codes.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    if not corp_codes:
+        return 0
+
+    logger.info(f"업종코드 미등록 기업 {len(corp_codes)}개 동기화 시작")
+
+    updates: list[dict] = []
+    lock = asyncio.Lock()
+
+    async def fetch_one(corp_code: str):
+        try:
+            data = await _dart_json("company.json", {"corp_code": corp_code})
+            if data.get("status") != "000":
+                return
+            code = (data.get("induty_code") or "").strip()
+            if code:
+                async with lock:
+                    updates.append({"corp_code": corp_code, "industry": code})
+        except Exception:
+            pass
+
+    # semaphore로 병렬 제한 (전역 _semaphore 재사용)
+    tasks = [fetch_one(c) for c in corp_codes]
+    await asyncio.gather(*tasks)
+
+    # 업종코드별로 그룹핑 후 배치 update (upsert 금지: corp_name NOT NULL 제약)
+    industry_map: dict[str, list[str]] = {}
+    for row in updates:
+        industry_map.setdefault(row["industry"], []).append(row["corp_code"])
+
+    updated_count = 0
+    for industry_code, codes in industry_map.items():
+        for i in range(0, len(codes), 200):
+            batch = codes[i : i + 200]
+            res = await asyncio.to_thread(
+                lambda ic=industry_code, b=batch: db.table("companies")
+                .update({"industry": ic})
+                .in_("corp_code", b)
+                .execute()
+            )
+            updated_count += len(res.data or [])
+
+    logger.info(f"업종코드 동기화 완료: {updated_count}개 업데이트")
+    return updated_count
+
+
 # ── 기업 ─────────────────────────────────────────────────────────────────────
 
 async def get_company(corp_code: str) -> dict | None:

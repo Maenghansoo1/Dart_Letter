@@ -1,25 +1,38 @@
 """
-기업 카테고리 자동 분류 서비스
-한 종목이 여러 카테고리에 중복 분류 가능 (company_categories 테이블)
-캐시: 24시간 (POST /categories/refresh 로 강제 갱신)
+기업 카테고리 서비스
+company_categories 테이블 없이 companies 테이블에서 직접 필터링
 """
 import asyncio
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from db.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
 
-# ── 상수 ──────────────────────────────────────────────────────────────────────
+# ── 카테고리 정의 ──────────────────────────────────────────────────────────────
 
-ETF_KEYWORDS = [
-    "KODEX", "TIGER", "ARIRANG", "KINDEX", "KOSEF",
-    "HANARO", "ACE", "SOL", "PLUS", "RISE", "SMART",
+STATIC_CATEGORIES = [
+    "전체",
+    "KOSPI",
+    "KOSDAQ",
+    "코넥스",
+    "ETF",
+    "우선주",
+    "신규상장",
 ]
 
-# KISIC 코드 앞자리 → 업종명
+ETF_KEYWORDS = ["KODEX", "TIGER", "ARIRANG", "KINDEX", "KOSEF",
+                "HANARO", "ACE", "SOL", "PLUS", "RISE", "SMART", "ETF"]
+
+INDUSTRY_CATEGORIES = [
+    "반도체", "바이오", "2차전지", "자동차", "은행",
+    "보험", "증권", "건설", "화학", "철강",
+    "유통", "게임/엔터", "통신", "부동산", "식품",
+    "에너지", "항공/운송", "IT서비스",
+]
+
 INDUSTRY_MAP: dict[str, list[str]] = {
     "반도체":    ["261", "262"],
     "바이오":    ["210", "211", "212", "213"],
@@ -41,188 +54,165 @@ INDUSTRY_MAP: dict[str, list[str]] = {
     "IT서비스":  ["620", "621", "622"],
 }
 
-MARKET_LABEL = {"KOSPI": "KOSPI", "KOSDAQ": "KOSDAQ", "KONEX": "코넥스"}
+ALL_CATEGORIES = STATIC_CATEGORIES + INDUSTRY_CATEGORIES
 
 
-# ── 분류 로직 ──────────────────────────────────────────────────────────────────
+# ── DB 쿼리 ────────────────────────────────────────────────────────────────────
 
-def _is_etf(name: str) -> bool:
-    upper = name.upper()
-    return "ETF" in upper or any(kw in upper for kw in ETF_KEYWORDS)
-
-
-def _is_preferred(name: str) -> bool:
-    return bool(re.search(r"[가-힣]우[A-Z]?$", name))
-
-
-def _sector_from_industry(industry: str) -> str | None:
-    for sector, prefixes in INDUSTRY_MAP.items():
-        if any(industry.startswith(p) for p in prefixes):
-            return sector
-    return None
-
-
-def _financials_categories(fin: dict, corp_name: str) -> list[str]:
-    result: list[str] = []
-    cap = fin.get("market_cap")
-    div = fin.get("dividend_yield")
-    per = fin.get("per")
-    pbr = fin.get("pbr")
-    rev = fin.get("revenue")
-    prev = fin.get("prev_revenue")
-
-    if cap is not None:
-        if cap >= 10_000_000_000_000:
-            result.append("대형주")
-        elif cap < 100_000_000_000:
-            result.append("소형주")
-
-    if div is not None:
-        if div >= 5.0:
-            result.extend(["고배당", "배당주"])
-        elif div >= 2.0:
-            result.append("배당주")
-
-    if "월배당" in corp_name or "월지급" in corp_name:
-        result.append("월배당주")
-
-    if per is not None and pbr is not None and per > 0 and pbr > 0:
-        if per <= 10 and pbr <= 1:
-            result.append("가치주")
-
-    if rev and prev and prev > 0:
-        if (rev - prev) / prev >= 0.20:
-            result.append("성장주")
-
-    return result
-
-
-def classify_company(company: dict, financials: dict | None) -> list[str]:
-    """단일 기업 → 카테고리 목록 (복수 허용)"""
-    cats: list[str] = []
-    name = company.get("corp_name", "")
-    market = company.get("market") or ""
-    industry = company.get("industry") or ""
-
-    if _is_etf(name):
-        cats.append("ETF")
-
-    if _is_preferred(name):
-        cats.append("우선주")
-
-    label = MARKET_LABEL.get(market)
-    if label:
-        cats.append(label)
-
-    listed_str = company.get("listed_date")
-    if listed_str:
-        try:
-            listed = date.fromisoformat(str(listed_str)[:10])
-            if (date.today() - listed).days <= 365:
-                cats.append("신규상장")
-        except (ValueError, TypeError):
-            pass
-
-    sector = _sector_from_industry(industry)
-    if sector:
-        cats.append(sector)
-
-    if financials:
-        cats.extend(_financials_categories(financials, name))
-
-    return list(set(cats))
-
-
-# ── DB 헬퍼 ───────────────────────────────────────────────────────────────────
-
-def _fetch_all_companies() -> list[dict]:
-    return (
-        get_supabase()
-        .table("companies")
-        .select("corp_code, corp_name, market, industry, listed_date")
-        .execute()
-        .data or []
+def _base_query():
+    return get_supabase().table("companies").select(
+        "corp_code, corp_name, stock_code, market, industry, listed_date"
     )
 
 
-def _fetch_all_financials() -> dict[str, dict]:
-    rows = get_supabase().table("financial_statements").select("*").execute().data or []
-    return {r["corp_code"]: r for r in rows}
+def _paginate(q, page: int, limit: int):
+    offset = (page - 1) * limit
+    return q.range(offset, offset + limit - 1)
 
 
-def _bulk_replace(rows: list[dict]) -> None:
-    db = get_supabase()
-    db.table("company_categories").delete().neq("corp_code", "").execute()
-    for i in range(0, len(rows), 500):
-        db.table("company_categories").insert(rows[i : i + 500]).execute()
+def _count(q) -> int:
+    res = q.execute()
+    return len(res.data or [])
 
 
-def _count_by_category() -> list[dict]:
-    rows = (
-        get_supabase()
-        .table("company_categories")
-        .select("category_name")
-        .execute()
-        .data or []
-    )
-    counts: dict[str, int] = {}
-    for r in rows:
-        cat = r["category_name"]
-        counts[cat] = counts.get(cat, 0) + 1
-    return sorted(
-        [{"category": k, "count": v} for k, v in counts.items()],
-        key=lambda x: -x["count"],
-    )
-
-
-def _query_stocks(category: str, sort: str, page: int, limit: int) -> dict:
+def _query_all(page: int, limit: int) -> dict:
     db = get_supabase()
     offset = (page - 1) * limit
+    items = db.table("companies").select(
+        "corp_code, corp_name, stock_code, market, industry"
+    ).range(offset, offset + limit - 1).execute()
+    total = db.table("companies").select("corp_code", count="exact").execute()
+    return {"items": items.data or [], "total": total.count or 0, "page": page, "limit": limit}
 
-    codes_res = (
-        db.table("company_categories")
-        .select("corp_code")
-        .eq("category_name", category)
-        .execute()
-    )
-    codes = [r["corp_code"] for r in (codes_res.data or [])]
-    total = len(codes)
-    if not codes:
+
+def _query_market(market_val: str, page: int, limit: int) -> dict:
+    db = get_supabase()
+    offset = (page - 1) * limit
+    q = db.table("companies").select(
+        "corp_code, corp_name, stock_code, market, industry"
+    ).eq("market", market_val)
+    items = q.range(offset, offset + limit - 1).execute()
+    count = db.table("companies").select("corp_code", count="exact").eq("market", market_val).execute()
+    return {"items": items.data or [], "total": count.count or 0, "page": page, "limit": limit}
+
+
+def _query_etf(page: int, limit: int) -> dict:
+    db = get_supabase()
+    offset = (page - 1) * limit
+    # 이름에 ETF 키워드 포함
+    filter_str = ",".join(f"corp_name.ilike.%{kw}%" for kw in ETF_KEYWORDS)
+    items = db.table("companies").select(
+        "corp_code, corp_name, stock_code, market, industry"
+    ).or_(filter_str).range(offset, offset + limit - 1).execute()
+    all_etf = db.table("companies").select("corp_code", count="exact").or_(filter_str).execute()
+    return {"items": items.data or [], "total": all_etf.count or 0, "page": page, "limit": limit}
+
+
+def _query_preferred(page: int, limit: int) -> dict:
+    db = get_supabase()
+    offset = (page - 1) * limit
+    # 종목명이 '우'로 끝나는 경우 (우선주)
+    items = db.table("companies").select(
+        "corp_code, corp_name, stock_code, market, industry"
+    ).or_("corp_name.ilike.%우,corp_name.ilike.%우B,corp_name.ilike.%우C").range(offset, offset + limit - 1).execute()
+    count = db.table("companies").select("corp_code", count="exact").or_(
+        "corp_name.ilike.%우,corp_name.ilike.%우B,corp_name.ilike.%우C"
+    ).execute()
+    return {"items": items.data or [], "total": count.count or 0, "page": page, "limit": limit}
+
+
+def _query_new_listing(page: int, limit: int) -> dict:
+    db = get_supabase()
+    offset = (page - 1) * limit
+    one_year_ago = (date.today() - timedelta(days=365)).isoformat()
+    items = db.table("companies").select(
+        "corp_code, corp_name, stock_code, market, industry, listed_date"
+    ).gte("listed_date", one_year_ago).range(offset, offset + limit - 1).execute()
+    count = db.table("companies").select("corp_code", count="exact").gte("listed_date", one_year_ago).execute()
+    return {"items": items.data or [], "total": count.count or 0, "page": page, "limit": limit}
+
+
+def _query_industry(category: str, page: int, limit: int) -> dict:
+    prefixes = INDUSTRY_MAP.get(category, [])
+    if not prefixes:
         return {"items": [], "total": 0, "page": page, "limit": limit}
+    db = get_supabase()
+    offset = (page - 1) * limit
+    filter_str = ",".join(f"industry.ilike.{p}%" for p in prefixes)
+    items = db.table("companies").select(
+        "corp_code, corp_name, stock_code, market, industry"
+    ).or_(filter_str).range(offset, offset + limit - 1).execute()
+    count = db.table("companies").select("corp_code", count="exact").or_(filter_str).execute()
+    return {"items": items.data or [], "total": count.count or 0, "page": page, "limit": limit}
 
-    page_codes = codes[offset : offset + limit]
-    items_res = (
-        db.table("companies")
-        .select("corp_code, corp_name, stock_code, market, industry")
-        .in_("corp_code", page_codes)
-        .execute()
-    )
-    return {"items": items_res.data or [], "total": total, "page": page, "limit": limit}
+
+# ── 카테고리별 종목 수 ─────────────────────────────────────────────────────────
+
+def _count_per_category() -> list[dict]:
+    db = get_supabase()
+    result = []
+    # 시장별
+    for market, label in [("KOSPI", "KOSPI"), ("KOSDAQ", "KOSDAQ"), ("KONEX", "코넥스")]:
+        c = db.table("companies").select("corp_code", count="exact").eq("market", market).execute()
+        result.append({"category": label, "count": c.count or 0})
+    # ETF
+    filter_str = ",".join(f"corp_name.ilike.%{kw}%" for kw in ETF_KEYWORDS)
+    c = db.table("companies").select("corp_code", count="exact").or_(filter_str).execute()
+    result.append({"category": "ETF", "count": c.count or 0})
+    # 우선주
+    c = db.table("companies").select("corp_code", count="exact").or_(
+        "corp_name.ilike.%우,corp_name.ilike.%우B,corp_name.ilike.%우C"
+    ).execute()
+    result.append({"category": "우선주", "count": c.count or 0})
+    # 신규상장
+    one_year_ago = (date.today() - timedelta(days=365)).isoformat()
+    c = db.table("companies").select("corp_code", count="exact").gte("listed_date", one_year_ago).execute()
+    result.append({"category": "신규상장", "count": c.count or 0})
+    # 업종
+    for sector, prefixes in INDUSTRY_MAP.items():
+        filter_str = ",".join(f"industry.ilike.{p}%" for p in prefixes)
+        c = db.table("companies").select("corp_code", count="exact").or_(filter_str).execute()
+        if (c.count or 0) > 0:
+            result.append({"category": sector, "count": c.count})
+    return result
 
 
 # ── 공개 인터페이스 ────────────────────────────────────────────────────────────
 
 async def get_categories() -> list[dict]:
-    return await asyncio.to_thread(_count_by_category)
+    try:
+        return await asyncio.to_thread(_count_per_category)
+    except Exception as e:
+        logger.error(f"카테고리 목록 실패: {e}")
+        # 폴백: 정적 카테고리만 반환
+        return [{"category": c, "count": 0} for c in STATIC_CATEGORIES[1:] + INDUSTRY_CATEGORIES]
 
 
-async def get_category_stocks(
-    category: str, sort: str, page: int, limit: int
-) -> dict:
-    return await asyncio.to_thread(_query_stocks, category, sort, page, limit)
+async def get_category_stocks(category: str, sort: str, page: int, limit: int) -> dict:
+    return await asyncio.to_thread(_dispatch, category, page, limit)
 
 
+def _dispatch(category: str, page: int, limit: int) -> dict:
+    if category == "전체":
+        return _query_all(page, limit)
+    if category == "KOSPI":
+        return _query_market("KOSPI", page, limit)
+    if category == "KOSDAQ":
+        return _query_market("KOSDAQ", page, limit)
+    if category == "코넥스":
+        return _query_market("KONEX", page, limit)
+    if category == "ETF":
+        return _query_etf(page, limit)
+    if category == "우선주":
+        return _query_preferred(page, limit)
+    if category == "신규상장":
+        return _query_new_listing(page, limit)
+    if category in INDUSTRY_MAP:
+        return _query_industry(category, page, limit)
+    return {"items": [], "total": 0, "page": page, "limit": limit}
+
+
+# refresh_all은 company_categories 테이블이 생기면 사용
 async def refresh_all() -> int:
-    """전체 종목 재분류 후 Supabase 저장"""
-    companies = await asyncio.to_thread(_fetch_all_companies)
-    financials = await asyncio.to_thread(_fetch_all_financials)
-
-    rows: list[dict] = []
-    for company in companies:
-        code = company["corp_code"]
-        for cat in classify_company(company, financials.get(code)):
-            rows.append({"corp_code": code, "category_name": cat})
-
-    await asyncio.to_thread(_bulk_replace, rows)
-    logger.info(f"카테고리 재분류 완료: {len(companies)}개 기업, {len(rows)}개 분류")
-    return len(companies)
+    logger.info("company_categories 테이블 없이 동작 중 — 정적 필터링 사용")
+    return 0
