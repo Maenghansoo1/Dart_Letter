@@ -1,43 +1,60 @@
 class Post {
   final String id;
-  final String corpCode;
-  final String corpName;
+  final String? corpCode;
+  final String? corpName;
+  final String postType; // 'stock' | 'info'
+  final String nickname;
   final String title;
   final String content;
-  final String authorId;
+  final int likesCount;
+  final int commentsCount;
   final DateTime createdAt;
-  final int likeCount;
-  final int commentCount;
 
   const Post({
     required this.id,
-    required this.corpCode,
-    required this.corpName,
+    this.corpCode,
+    this.corpName,
+    required this.postType,
+    required this.nickname,
     required this.title,
     required this.content,
-    required this.authorId,
+    this.likesCount = 0,
+    this.commentsCount = 0,
     required this.createdAt,
-    this.likeCount = 0,
-    this.commentCount = 0,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) => Post(
         id: json['id'] as String,
-        corpCode: json['corp_code'] as String,
-        corpName: json['corp_name'] as String,
+        corpCode: json['corp_code'] as String?,
+        corpName: json['corp_name'] as String?,
+        postType: (json['post_type'] as String?) ?? 'stock',
+        nickname: (json['nickname'] as String?) ?? '익명',
         title: json['title'] as String,
         content: json['content'] as String,
-        authorId: json['author_id'] as String,
+        likesCount: (json['likes_count'] as num?)?.toInt() ?? 0,
+        commentsCount: (json['comments_count'] as num?)?.toInt() ?? 0,
         createdAt: DateTime.parse(json['created_at'] as String),
-        likeCount: json['like_count'] as int? ?? 0,
-        commentCount: json['comment_count'] as int? ?? 0,
       );
 
-  String get formattedDate {
-    final now = DateTime.now();
-    final diff = now.difference(createdAt);
+  Post copyWith({int? likesCount, int? commentsCount}) => Post(
+        id: id,
+        corpCode: corpCode,
+        corpName: corpName,
+        postType: postType,
+        nickname: nickname,
+        title: title,
+        content: content,
+        likesCount: likesCount ?? this.likesCount,
+        commentsCount: commentsCount ?? this.commentsCount,
+        createdAt: createdAt,
+      );
+
+  String get relativeTime {
+    final diff = DateTime.now().difference(createdAt);
+    if (diff.inMinutes < 1) return '방금 전';
     if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
     if (diff.inHours < 24) return '${diff.inHours}시간 전';
+    if (diff.inDays < 7) return '${diff.inDays}일 전';
     return '${createdAt.month}.${createdAt.day}';
   }
 }

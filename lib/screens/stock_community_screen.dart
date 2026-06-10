@@ -1,62 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shimmer/shimmer.dart';
 import '../core/constants.dart';
 import '../models/post.dart';
 import '../providers/community_provider.dart';
 import '../services/community_service.dart';
 import '../widgets/error_view.dart';
-import 'package:shimmer/shimmer.dart';
+import 'post_write_screen.dart';
 
-// ─── 메인 커뮤니티 탭 화면 ────────────────────────────────────────────────────
+class StockCommunityScreen extends StatefulWidget {
+  const StockCommunityScreen({
+    super.key,
+    required this.corpCode,
+    required this.corpName,
+  });
 
-class CommunityScreen extends StatelessWidget {
-  const CommunityScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('커뮤니티'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: '인기글'),
-              Tab(text: '전체 종목'),
-              Tab(text: '정보 공유'),
-            ],
-          ),
-        ),
-        body: const TabBarView(
-          children: [
-            _PostFeed(feed: 'popular'),
-            _PostFeed(feed: 'stock'),
-            _PostFeed(feed: 'info'),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => context.push('/community/write'),
-          backgroundColor: AppColors.primary,
-          icon: const Icon(Icons.edit, color: Colors.white),
-          label: const Text('글쓰기', style: TextStyle(color: Colors.white)),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── 게시글 피드 (무한 스크롤) ────────────────────────────────────────────────
-
-class _PostFeed extends StatefulWidget {
-  const _PostFeed({required this.feed});
-  final String feed; // popular | stock | info
+  final String corpCode;
+  final String corpName;
 
   @override
-  State<_PostFeed> createState() => _PostFeedState();
+  State<StockCommunityScreen> createState() => _StockCommunityScreenState();
 }
 
-class _PostFeedState extends State<_PostFeed> with AutomaticKeepAliveClientMixin {
+class _StockCommunityScreenState extends State<StockCommunityScreen> {
   final _scroll = ScrollController();
   final _posts = <Post>[];
   int _page = 1;
@@ -65,9 +32,6 @@ class _PostFeedState extends State<_PostFeed> with AutomaticKeepAliveClientMixin
   bool _loadingMore = false;
   String? _error;
   int _fetchId = 0;
-
-  @override
-  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -108,8 +72,11 @@ class _PostFeedState extends State<_PostFeed> with AutomaticKeepAliveClientMixin
     }
 
     try {
-      final svc = CommunityService();
-      final result = await svc.getPosts(feed: widget.feed, page: _page, limit: 20);
+      final result = await CommunityService().getPosts(
+        corpCode: widget.corpCode,
+        page: _page,
+        limit: 20,
+      );
       if (!mounted || id != _fetchId) return;
       setState(() {
         _posts.addAll(result.items);
@@ -128,22 +95,45 @@ class _PostFeedState extends State<_PostFeed> with AutomaticKeepAliveClientMixin
     }
   }
 
+  void _openWrite() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostWriteScreen(
+          corpCode: widget.corpCode,
+          corpName: widget.corpName,
+        ),
+      ),
+    ).then((_) => _load(reset: true));
+  }
+
   @override
   Widget build(BuildContext context) {
-    super.build(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${widget.corpName} 커뮤니티'),
+      ),
+      body: _buildBody(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openWrite,
+        backgroundColor: AppColors.primary,
+        icon: const Icon(Icons.edit, color: Colors.white),
+        label: const Text('글쓰기', style: TextStyle(color: Colors.white)),
+      ),
+    );
+  }
 
+  Widget _buildBody() {
     if (_loading) {
       return ListView.separated(
-        itemCount: 6,
+        itemCount: 5,
         separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (_, _) => const _PostSkeleton(),
+        itemBuilder: (_, _) => _PostSkeleton(),
       );
     }
-
     if (_error != null) {
       return ErrorView(message: _error!, onRetry: () => _load(reset: true));
     }
-
     if (_posts.isEmpty) {
       return Center(
         child: Column(
@@ -151,15 +141,12 @@ class _PostFeedState extends State<_PostFeed> with AutomaticKeepAliveClientMixin
           children: [
             const Icon(Icons.forum_outlined, size: 48, color: AppColors.textHint),
             const SizedBox(height: 12),
-            Text(
-              widget.feed == 'popular' ? '아직 인기글이 없습니다' : '첫 번째 글을 작성해보세요',
-              style: const TextStyle(color: AppColors.textSecondary),
-            ),
+            Text('${widget.corpName}에 대한 첫 글을 작성해보세요',
+                style: const TextStyle(color: AppColors.textSecondary)),
           ],
         ),
       );
     }
-
     return RefreshIndicator(
       onRefresh: () => _load(reset: true),
       child: ListView.separated(
@@ -173,23 +160,20 @@ class _PostFeedState extends State<_PostFeed> with AutomaticKeepAliveClientMixin
               child: Center(child: CircularProgressIndicator()),
             );
           }
-          return _PostCard(post: _posts[i]);
+          return _StockPostCard(post: _posts[i]);
         },
       ),
     );
   }
 }
 
-// ─── 게시글 카드 ──────────────────────────────────────────────────────────────
-
-class _PostCard extends ConsumerWidget {
-  const _PostCard({required this.post});
+class _StockPostCard extends ConsumerWidget {
+  const _StockPostCard({required this.post});
   final Post post;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final liked = ref.watch(likedPostsProvider).contains(post.id);
-
     return InkWell(
       onTap: () => context.push('/community/post/${post.id}'),
       child: Padding(
@@ -197,38 +181,34 @@ class _PostCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 종목 태그 or 정보공유 배지
-            Row(
-              children: [
-                if (post.corpName != null)
-                  _Badge(label: post.corpName!, color: AppColors.primary)
-                else
-                  const _Badge(label: '정보 공유', color: Color(0xFF2E7D32)),
-                const Spacer(),
-                Text(post.relativeTime,
-                    style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              post.title,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              post.content,
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
             Row(
               children: [
                 Text(post.nickname,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary)),
                 const Spacer(),
+                Text(post.relativeTime,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textHint)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(post.title,
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Text(post.content,
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textSecondary),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 8),
+            Row(
+              children: [
                 Icon(Icons.thumb_up_outlined,
                     size: 14,
                     color: liked ? AppColors.primary : AppColors.textHint),
@@ -238,10 +218,12 @@ class _PostCard extends ConsumerWidget {
                         fontSize: 12,
                         color: liked ? AppColors.primary : AppColors.textHint)),
                 const SizedBox(width: 12),
-                const Icon(Icons.chat_bubble_outline, size: 14, color: AppColors.textHint),
+                const Icon(Icons.chat_bubble_outline,
+                    size: 14, color: AppColors.textHint),
                 const SizedBox(width: 3),
                 Text('${post.commentsCount}',
-                    style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textHint)),
               ],
             ),
           ],
@@ -251,28 +233,7 @@ class _PostCard extends ConsumerWidget {
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge({required this.label, required this.color});
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(25),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(label,
-          style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
 class _PostSkeleton extends StatelessWidget {
-  const _PostSkeleton();
-
   Widget _box(double width, double height) => Shimmer.fromColors(
         baseColor: const Color(0xFFE0E0E0),
         highlightColor: const Color(0xFFF5F5F5),
@@ -293,17 +254,11 @@ class _PostSkeleton extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _box(60, 18),
+          _box(200, 16),
+          const SizedBox(height: 6),
+          _box(double.infinity, 14),
           const SizedBox(height: 8),
-          _box(double.infinity, 16),
-          const SizedBox(height: 4),
-          _box(200, 14),
-          const SizedBox(height: 8),
-          Row(children: [
-            _box(50, 12),
-            const Spacer(),
-            _box(60, 12),
-          ]),
+          _box(60, 12),
         ],
       ),
     );

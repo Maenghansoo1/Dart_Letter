@@ -78,7 +78,7 @@ class CompanyDetailScreen extends ConsumerWidget {
                     DisclosureTab(corpCode: corpCode),
                     NewsTab(corpName: company.corpName),
                     IssueTab(corpCode: corpCode),
-                    CommunityTab(corpCode: corpCode),
+                    CommunityTab(corpCode: corpCode, corpName: company.corpName),
                   ],
                 ),
               ),
